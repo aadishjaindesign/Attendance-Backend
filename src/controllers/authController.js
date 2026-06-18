@@ -51,14 +51,9 @@ const registerUser = async (req, res) => {
   }
 };
 
-// Login 
-console.log("JWT_SECRET =", process.env.JWT_SECRET);
+// Login
 const loginUser = async (req, res) => {
-  console.log("LOGIN HIT");
-  console.log("BODY =", req.body);
-
   try {
- 
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
@@ -99,13 +94,10 @@ const loginUser = async (req, res) => {
     });
 
   } catch (error) {
-  console.error("LOGIN ERROR:", error);
-
-  res.status(500).json({
-    message: error.message,
-    stack: error.stack,
-  });
-}
+    res.status(500).json({
+      message: error.message,
+    });
+  }
 };
 
 module.exports = {

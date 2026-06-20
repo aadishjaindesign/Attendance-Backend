@@ -8,9 +8,9 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) *
+    Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
@@ -40,15 +40,18 @@ const checkIn = async (req, res) => {
 
     const todayEnd = new Date();
     todayEnd.setHours(23, 59, 59, 999);
-
     const alreadyCheckedIn = await Attendance.findOne({
       employee: employeeId,
-      checkOut: null,
-      createdAt: { $gte: todayStart, $lte: todayEnd },
+      createdAt: {
+        $gte: todayStart,
+        $lte: todayEnd,
+      },
     });
 
     if (alreadyCheckedIn) {
-      return res.status(400).json({ message: "Already checked in today" });
+      return res.status(400).json
+        message: "Attendance already marked for today",
+      });
     }
 
     const attendance = await Attendance.create({

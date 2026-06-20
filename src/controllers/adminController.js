@@ -7,13 +7,30 @@ const getDashboardStats = async (req, res) => {
   try {
     const totalEmployees = await User.countDocuments({
       role: "employee",
+      status: "approved",
     });
-
 
     const pendingApprovals = await User.countDocuments({
       role: "employee",
       status: "pending",
     });
+
+    // Today's attendance
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const presentToday = await Attendance.countDocuments({
+      createdAt: {
+        $gte: todayStart,
+        $lte: todayEnd,
+      },
+    });
+
+    const absentToday =
+      totalEmployees - presentToday;
 
     const recentUsers = await User.find({
       role: "employee",
@@ -25,9 +42,10 @@ const getDashboardStats = async (req, res) => {
     res.json({
       totalEmployees,
       pendingApprovals,
+      presentToday,
+      absentToday,
       recentUsers,
     });
-
 
   } catch (error) {
     res.status(500).json({

@@ -49,7 +49,7 @@ const checkIn = async (req, res) => {
     });
 
     if (alreadyCheckedIn) {
-      return res.status(400).json
+      return res.status(400).json({
         message: "Attendance already marked for today",
       });
     }

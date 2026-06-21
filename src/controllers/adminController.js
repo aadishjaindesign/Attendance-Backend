@@ -176,6 +176,9 @@ const attendance = await Attendance.find({
         name: emp.name,
         department: emp.department || "-",
         totalDays: attendance.filter((a) => a.status === "Present").length,
+        halfDays: attendance.filter(
+  (a) => a.status === "Half Day"
+).length,
         totalHours: totalHours.toFixed(1),
         attendance: attendance.map((a) => ({
           date: a.date,

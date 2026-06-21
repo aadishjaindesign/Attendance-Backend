@@ -8,11 +8,26 @@ const adminRoutes = require("./routes/adminRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
 const leaveRoutes = require("./routes/leaveRoutes");
 const settingsRoutes = require("./routes/settingsRoutes");
+const cron = require("node-cron");
+const { autoMarkSundays } = require("./controllers/attendanceController");
 
 dotenv.config();
 connectDB();
 
 const app = express();
+cron.schedule("0 0 * * *", async () => {
+  await autoMarkSundays(
+    {},
+    {
+      json: () => {},
+      status: () => ({
+        json: () => {},
+      }),
+    }
+  );
+
+  console.log("Sunday cron checked");
+});
 
 app.use(cors({
   origin: "*",
@@ -37,6 +52,22 @@ app.get("/ping", (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`✅ Server running on port ${PORT}`);
+
+  try {
+    await autoMarkSundays(
+      {},
+      {
+        json: () => {},
+        status: () => ({
+          json: () => {},
+        }),
+      }
+    );
+
+    console.log("✅ Sunday auto check executed");
+  } catch (err) {
+    console.log(err);
+  }
 });

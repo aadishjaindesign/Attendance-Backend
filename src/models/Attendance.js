@@ -16,11 +16,18 @@ const attendanceSchema = new mongoose.Schema(
     checkIn: Date,
     checkOut: Date,
 
-    status: {
-      type: String,
-      enum: ["Present", "Absent", "Sunday", "Holiday", "Leave"],
-      default: "Present",
-    },
+   status: {
+  type: String,
+  enum: [
+    "Present",
+    "Half Day",
+    "Absent",
+    "Sunday",
+    "Holiday",
+    "Leave"
+  ],
+  default: "Present",
+},
 
     note: String, // Sunday/Holiday ke liye
   },

@@ -106,22 +106,37 @@ const checkOut = async (req, res) => {
 
     const todayStr = getTodayString();
 
-    const attendance = await Attendance.findOneAndUpdate(
-      {
-        employee: employeeId,
-        date: todayStr,
-        checkOut: null,
-        status: "Present",
-      },
-      { checkOut: new Date() },
-      { new: true }
-    );
+    const attendance = await Attendance.findOne({
+      employee: employeeId,
+      date: todayStr,
+      checkOut: null,
+    });
 
     if (!attendance) {
-      return res.status(400).json({ message: "No active check-in found for today" });
+      return res.status(400).json({
+        message: "No active check-in found for today",
+      });
     }
 
-    res.json({ message: "Check-out successful", attendance });
+    attendance.checkOut = new Date();
+
+    const hours =
+      (attendance.checkOut - attendance.checkIn) /
+      (1000 * 60 * 60);
+
+    if (hours < 4) {
+      attendance.status = "Half Day";
+    } else {
+      attendance.status = "Present";
+    }
+
+    await attendance.save();
+
+    res.json({
+      message: "Check-out successful",
+      attendance,
+    });
+
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

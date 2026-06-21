@@ -19,8 +19,19 @@ const userSchema = new mongoose.Schema(
 
     status: {
       type: String,
+      enum: ["pending", "approved", "removed"],
       default: "pending",
     },
+
+    // Admin द्वारा extra leaves
+    extraLeaves: {
+      type: Number,
+      default: 0,
+    },
+
+    // Password reset token
+    resetToken: String,
+    resetTokenExpiry: Date,
   },
   { timestamps: true }
 );

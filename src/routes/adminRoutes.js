@@ -1,34 +1,41 @@
 const express = require("express");
 const router = express.Router();
+
 const {
   getDashboardStats,
   getPendingEmployees,
   approveEmployee,
   getAllEmployees,
+  getRemovedEmployees,
   rejectEmployee,
+  removeEmployee,
   getAllAttendance,
-  getAttendanceReports,
   getEmployeeDetailReport,
+  grantExtraLeave,
 } = require("../controllers/adminController");
 
-// Dashboard stats
+// Dashboard
 router.get("/dashboard", getDashboardStats);
 
-// Pending employees list
-router.get("/pending", getPendingEmployees);
-
+// Employees
 router.get("/employees", getAllEmployees);
+router.get("/employees/removed", getRemovedEmployees);
 
+// Attendance
 router.get("/attendance", getAllAttendance);
 
-router.get("/reports", getAttendanceReports);
-
+// Reports
 router.get("/employee-report", getEmployeeDetailReport);
 
-// Approve employee
+// Approvals
+router.get("/pending", getPendingEmployees);
 router.put("/approve/:id", approveEmployee);
-
-// Reject employee
 router.delete("/reject/:id", rejectEmployee);
+
+// Employee remove
+router.put("/remove/:id", removeEmployee);
+
+// Grant extra leave
+router.post("/grant-leave", grantExtraLeave);
 
 module.exports = router;

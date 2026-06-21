@@ -151,17 +151,17 @@ const getEmployeeDetailReport = async (req, res) => {
     const reports = [];
 
     for (const emp of employees) {
-      console.log("================================");
-console.log("EMPLOYEE:", emp.name);
-console.log("EMPLOYEE ID:", emp._id);
+    
 
 const attendance = await Attendance.find({
   employee: emp._id,
+  date: {
+    $gte: startStr,
+    $lte: endStr,
+  },
 }).sort({ date: -1 });
 
-console.log("ATTENDANCE COUNT:", attendance.length);
-console.log(attendance);
-console.log("================================");
+
 
       const leaves = await Leave.find({
         employee: emp._id,

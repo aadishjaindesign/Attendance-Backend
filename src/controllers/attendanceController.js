@@ -17,13 +17,20 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-// ── Today's date string "YYYY-MM-DD" ──
-const getTodayString = () => {
+// ── IST Date "YYYY-MM-DD" ──
+// FIX: Render server UTC pe hai, India IST (+5:30) hai
+// Isliye UTC me +5:30 add karke sahi date nikalte hain
+const getISTDateString = () => {
   const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  const istDate = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  return istDate.toISOString().slice(0, 10); // "YYYY-MM-DD"
+};
+
+// ── IST Day of Week (0=Sunday, 1=Monday ... 6=Saturday) ──
+const getISTDayOfWeek = () => {
+  const now = new Date();
+  const istDate = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  return istDate.getUTCDay();
 };
 
 // ── CHECK IN ──
@@ -31,7 +38,6 @@ const checkIn = async (req, res) => {
   try {
     const { employeeId, latitude, longitude } = req.body;
 
-    // Admin ki attendance nahi lagti
     const user = await User.findById(employeeId);
     if (!user) return res.status(404).json({ message: "User not found" });
     if (user.role === "admin") {
@@ -41,12 +47,12 @@ const checkIn = async (req, res) => {
       return res.status(403).json({ message: "Account removed. Contact admin." });
     }
 
-    const todayStr = getTodayString();
+    const todayStr = getISTDateString();
+    const dayOfWeek = getISTDayOfWeek();
 
-    // Sunday check
-    const today = new Date();
-    if (today.getDay() === 0) {
-      return res.status(400).json({ message: "Today is Sunday. Office is closed." });
+    // Sunday check — IST ke hisab se
+    if (dayOfWeek === 0) {
+      return res.status(400).json({ message: "Aaj Sunday hai. Office band hai." });
     }
 
     // Holiday check
@@ -57,32 +63,32 @@ const checkIn = async (req, res) => {
     });
     if (holiday) {
       return res.status(400).json({
-        message: `Today is a holiday: ${holiday.title}`,
+        message: `Aaj holiday hai: ${holiday.title}`,
       });
     }
 
     // Already checked in today?
     const existing = await Attendance.findOne({ employee: employeeId, date: todayStr });
     if (existing) {
-      return res.status(400).json({ message: "Attendance already marked for today" });
+      return res.status(400).json({ message: "Aaj ki attendance already mark ho chuki hai" });
     }
 
     // Office radius check
     const settings = await Settings.findOne();
     if (!settings) {
-      return res.status(400).json({ message: "Office location not configured by admin" });
+      return res.status(400).json({ message: "Admin ne office location configure nahi ki hai" });
     }
 
     const distance = calculateDistance(
       parseFloat(latitude),
       parseFloat(longitude),
-      settings.latitude,
-      settings.longitude
+      parseFloat(settings.latitude),
+      parseFloat(settings.longitude)
     );
 
     if (distance > settings.allowedRadius) {
       return res.status(400).json({
-        message: `You are ${Math.round(distance)}m away from office. Allowed: ${settings.allowedRadius}m`,
+        message: `Aap office se ${Math.round(distance)}m door hain. Allowed range: ${settings.allowedRadius}m`,
       });
     }
 
@@ -103,8 +109,7 @@ const checkIn = async (req, res) => {
 const checkOut = async (req, res) => {
   try {
     const { employeeId } = req.body;
-
-    const todayStr = getTodayString();
+    const todayStr = getISTDateString();
 
     const attendance = await Attendance.findOne({
       employee: employeeId,
@@ -121,35 +126,56 @@ const checkOut = async (req, res) => {
     attendance.checkOut = new Date();
 
     const hours =
-      (attendance.checkOut - attendance.checkIn) /
-      (1000 * 60 * 60);
+      (attendance.checkOut - attendance.checkIn) / (1000 * 60 * 60);
 
-    if (hours < 4) {
-      attendance.status = "Half Day";
-    } else {
-      attendance.status = "Present";
-    }
+    attendance.status = hours < 4 ? "Half Day" : "Present";
 
     await attendance.save();
 
-    res.json({
-      message: "Check-out successful",
-      attendance,
-    });
-
+    res.json({ message: "Check-out successful", attendance });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
 // ── GET TODAY STATUS ──
+// FIX: Sunday/Holiday pe error nahi — seedha info response deta hai
+// Frontend ye dekh ke banner dikhata hai, koi popup nahi
 const getTodayAttendance = async (req, res) => {
   try {
-    const todayStr = getTodayString();
+    const todayStr = getISTDateString();
+    const dayOfWeek = getISTDayOfWeek();
+
+    // Sunday — no error, just info object
+    if (dayOfWeek === 0) {
+      return res.json({
+        isSunday: true,
+        date: todayStr,
+        status: "Sunday",
+        message: "Aaj Sunday hai. Office band hai.",
+      });
+    }
+
+    // Holiday check
+    const todayDate = new Date(todayStr);
+    const holiday = await Holiday.findOne({
+      fromDate: { $lte: todayDate },
+      toDate: { $gte: todayDate },
+    });
+    if (holiday) {
+      return res.json({
+        isHoliday: true,
+        date: todayStr,
+        status: "Holiday",
+        message: `Aaj holiday hai: ${holiday.title}`,
+      });
+    }
+
     const data = await Attendance.findOne({
       employee: req.params.id,
       date: todayStr,
     });
+
     res.json(data || null);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -166,17 +192,16 @@ const getMyAttendance = async (req, res) => {
   }
 };
 
-// ── AUTO MARK SUNDAYS (cron/manual trigger) ──
+// ── AUTO MARK SUNDAYS ──
 const autoMarkSundays = async (req, res) => {
   try {
-    const employees = await User.find({ role: "employee", status: "approved" });
-    const today = new Date();
-
-    if (today.getDay() !== 0) {
-      return res.json({ message: "Today is not Sunday" });
+    const dayOfWeek = getISTDayOfWeek();
+    if (dayOfWeek !== 0) {
+      return res.json({ message: "Aaj Sunday nahi hai" });
     }
 
-    const todayStr = getTodayString();
+    const employees = await User.find({ role: "employee", status: "approved" });
+    const todayStr = getISTDateString();
     let count = 0;
 
     for (const emp of employees) {
@@ -198,14 +223,13 @@ const autoMarkSundays = async (req, res) => {
   }
 };
 
-// ── AUTO MARK HOLIDAY (jab admin holiday add kare) ──
+// ── AUTO MARK HOLIDAY ──
 const autoMarkHoliday = async (holidayId) => {
   try {
     const holiday = await Holiday.findById(holidayId);
     if (!holiday) return;
 
     const employees = await User.find({ role: "employee", status: "approved" });
-
     const from = new Date(holiday.fromDate);
     const to = new Date(holiday.toDate);
 

@@ -155,10 +155,6 @@ const getEmployeeDetailReport = async (req, res) => {
 
 const attendance = await Attendance.find({
   employee: emp._id,
-  date: {
-    $gte: startStr,
-    $lte: endStr,
-  },
 }).sort({ date: -1 });
 
 

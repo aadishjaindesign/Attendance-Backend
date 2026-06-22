@@ -193,61 +193,84 @@ const getMyAttendance = async (req, res) => {
 };
 
 // ── AUTO MARK SUNDAYS ──
-const autoMarkSundays = async (req, res) => {
+const autoMarkSundays = async () => {
   try {
-    const dayOfWeek = getISTDayOfWeek();
-    if (dayOfWeek !== 0) {
-      return res.json({ message: "Aaj Sunday nahi hai" });
-    }
 
-    const employees = await User.find({ role: "employee", status: "approved" });
+    const dayOfWeek = getISTDayOfWeek();
+
+    if (dayOfWeek !== 0) return;
+
+    const employees = await User.find({
+      role: "employee",
+      status: "approved",
+    });
+
     const todayStr = getISTDateString();
-    let count = 0;
 
     for (const emp of employees) {
-      const exists = await Attendance.findOne({ employee: emp._id, date: todayStr });
+
+      const exists = await Attendance.findOne({
+        employee: emp._id,
+        date: todayStr,
+      });
+
       if (!exists) {
+
+        const checkInTime = new Date();
+        checkInTime.setHours(10, 0, 0, 0);
+
+        const checkOutTime = new Date();
+        checkOutTime.setHours(18, 0, 0, 0);
+
         await Attendance.create({
           employee: emp._id,
           date: todayStr,
+          checkIn: checkInTime,
+          checkOut: checkOutTime,
           status: "Sunday",
-          note: "Auto-marked Sunday",
+          note: "Auto Sunday",
         });
-        count++;
+
       }
     }
 
-    res.json({ message: `Sunday marked for ${count} employees` });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.log(error);
   }
 };
-
 // ── AUTO MARK HOLIDAY ──
 const autoMarkHoliday = async (holidayId) => {
   try {
     const holiday = await Holiday.findById(holidayId);
     if (!holiday) return;
-
+    
     const employees = await User.find({ role: "employee", status: "approved" });
     const from = new Date(holiday.fromDate);
     const to = new Date(holiday.toDate);
 
     for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+      const checkInTime = new Date(d);
+checkInTime.setHours(10, 0, 0, 0);
+
+const checkOutTime = new Date(d);
+checkOutTime.setHours(18, 0, 0, 0);
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, "0");
       const day = String(d.getDate()).padStart(2, "0");
       const dateStr = `${y}-${m}-${day}`;
 
+
       for (const emp of employees) {
         const exists = await Attendance.findOne({ employee: emp._id, date: dateStr });
         if (!exists) {
-          await Attendance.create({
-            employee: emp._id,
-            date: dateStr,
-            status: "Holiday",
-            note: holiday.title,
-          });
+         await Attendance.create({
+  employee: emp._id,
+  date: dateStr,
+  checkIn: checkInTime,
+  checkOut: checkOutTime,
+  status: "Holiday",
+  note: holiday.title,
+});
         }
       }
     }
@@ -263,4 +286,5 @@ module.exports = {
   getMyAttendance,
   autoMarkSundays,
   autoMarkHoliday,
+    getISTDateString,
 };

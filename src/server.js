@@ -9,7 +9,11 @@ const attendanceRoutes = require("./routes/attendanceRoutes");
 const leaveRoutes = require("./routes/leaveRoutes");
 const settingsRoutes = require("./routes/settingsRoutes");
 const cron = require("node-cron");
-const { autoMarkSundays } = require("./controllers/attendanceController");
+const {
+  autoMarkSundays,
+  getISTDateString,
+} = require("./controllers/attendanceController");
+const Attendance = require("./models/Attendance");
 
 dotenv.config();
 connectDB();
@@ -34,6 +38,36 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
+cron.schedule("0 22 * * *", async () => {
+
+  const todayStr = getISTDateString();
+
+  const records = await Attendance.find({
+    date: todayStr,
+    checkOut: null,
+    status: "Present",
+  });
+
+  for (const record of records) {
+
+    const autoCheckout = new Date();
+    autoCheckout.setHours(22, 0, 0, 0);
+
+    record.checkOut = autoCheckout;
+
+    const hours =
+      (record.checkOut - record.checkIn) /
+      (1000 * 60 * 60);
+
+    record.status =
+      hours < 4 ? "Half Day" : "Present";
+
+    await record.save();
+  }
+
+  console.log("Auto Checkout Completed");
+
+});
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);

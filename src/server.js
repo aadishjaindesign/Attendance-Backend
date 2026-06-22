@@ -19,55 +19,58 @@ dotenv.config();
 connectDB();
 
 const app = express();
-cron.schedule("0 0 * * *", async () => {
-  await autoMarkSundays(
-    {},
-    {
-      json: () => {},
-      status: () => ({
-        json: () => {},
-      }),
-    }
-  );
-
-  console.log("Sunday cron checked");
-});
+cron.schedule(
+  "0 0 * * *",
+  async () => {
+    await autoMarkSundays();
+    console.log("Sunday cron checked");
+  },
+  {
+    timezone: "Asia/Kolkata",
+  }
+);
 
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
-cron.schedule("0 22 * * *", async () => {
+cron.schedule(
+  "0 22 * * *",
+  async () => {
 
-  const todayStr = getISTDateString();
+    const todayStr = getISTDateString();
 
-  const records = await Attendance.find({
-    date: todayStr,
-    checkOut: null,
-    status: "Present",
-  });
+    const records = await Attendance.find({
+      date: todayStr,
+      checkOut: null,
+      status: "Present",
+    });
 
-  for (const record of records) {
+    for (const record of records) {
 
-    const autoCheckout = new Date();
-    autoCheckout.setHours(22, 0, 0, 0);
+      const autoCheckout = new Date();
+      autoCheckout.setHours(22, 0, 0, 0);
 
-    record.checkOut = autoCheckout;
+      record.checkOut = autoCheckout;
 
-    const hours =
-      (record.checkOut - record.checkIn) /
-      (1000 * 60 * 60);
+      const hours =
+        (record.checkOut - record.checkIn) /
+        (1000 * 60 * 60);
 
-    record.status =
-      hours < 4 ? "Half Day" : "Present";
+      record.status =
+        hours < 4 ? "Half Day" : "Present";
 
-    await record.save();
+      await record.save();
+    }
+
+    console.log("✅ Auto Checkout Completed");
+
+  },
+  {
+    timezone: "Asia/Kolkata",
   }
-
-  console.log("Auto Checkout Completed");
-
-});
+);
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);

@@ -4,13 +4,20 @@ const Leave = require("../models/Leave");
 const Holiday = require("../models/Holiday");
 const { autoMarkHoliday } = require("./attendanceController");
 
+// ── IST Date helper ──
+const getISTDateString = () => {
+  const istDate = new Date(new Date().getTime() + 5.5 * 60 * 60 * 1000);
+  return istDate.toISOString().slice(0, 10);
+};
+
 // ── DASHBOARD STATS ──
 const getDashboardStats = async (req, res) => {
   try {
     const totalEmployees = await User.countDocuments({ role: "employee", status: "approved" });
     const pendingApprovals = await User.countDocuments({ role: "employee", status: "pending" });
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // FIX: IST date use karo — Render UTC pe hai
+    const todayStr = getISTDateString();
     const presentToday = await Attendance.countDocuments({
       date: todayStr,
       status: "Present",
@@ -106,12 +113,17 @@ const removeEmployee = async (req, res) => {
   }
 };
 
-// ── ALL ATTENDANCE ──
+// ── ALL ATTENDANCE (employees only — admin rows nahi) ──
 const getAllAttendance = async (req, res) => {
   try {
-    const records = await Attendance.find()
-      .populate("employee", "name email department")
+    // FIX: Sirf employee role wale records lo, admin exclude
+    const employeeIds = await User.find({ role: "employee" }).select("_id");
+    const ids = employeeIds.map((u) => u._id);
+
+    const records = await Attendance.find({ employee: { $in: ids } })
+      .populate("employee", "name email department role")
       .sort({ date: -1 });
+
     res.json(records);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -123,26 +135,28 @@ const getEmployeeDetailReport = async (req, res) => {
   try {
     const { employeeId, filter, startDate, endDate } = req.query;
 
-    let start, end;
+    let startStr, endStr;
     const now = new Date();
 
     if (filter === "weekly") {
-      start = new Date(now);
-      start.setDate(now.getDate() - 7);
-      end = now;
+      const s = new Date(now);
+      s.setDate(now.getDate() - 7);
+      startStr = s.toISOString().slice(0, 10);
+      endStr = now.toISOString().slice(0, 10);
     } else if (filter === "monthly") {
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      const e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      startStr = s.toISOString().slice(0, 10);
+      endStr = e.toISOString().slice(0, 10);
     } else if (filter === "custom" && startDate && endDate) {
-      start = new Date(startDate);
-      end = new Date(endDate);
+      startStr = startDate;
+      endStr = endDate;
     } else {
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      end = now;
+      // Default: is mahine
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      startStr = s.toISOString().slice(0, 10);
+      endStr = now.toISOString().slice(0, 10);
     }
-
-    const startStr = start.toISOString().slice(0, 10);
-    const endStr = end.toISOString().slice(0, 10);
 
     const query = { role: "employee", status: "approved" };
     if (employeeId) query._id = employeeId;
@@ -151,17 +165,18 @@ const getEmployeeDetailReport = async (req, res) => {
     const reports = [];
 
     for (const emp of employees) {
-    
-
-const attendance = await Attendance.find({
-  employee: emp._id,
-}).sort({ date: -1 });
-
-
+      // FIX: date string se filter karo (date field "YYYY-MM-DD" hai)
+      const attendance = await Attendance.find({
+        employee: emp._id,
+        date: { $gte: startStr, $lte: endStr },
+      }).sort({ date: -1 });
 
       const leaves = await Leave.find({
         employee: emp._id,
-        createdAt: { $gte: start, $lte: end },
+        createdAt: {
+          $gte: new Date(startStr),
+          $lte: new Date(endStr + "T23:59:59.999Z"),
+        },
       }).sort({ createdAt: -1 });
 
       let totalHours = 0;
@@ -176,9 +191,7 @@ const attendance = await Attendance.find({
         name: emp.name,
         department: emp.department || "-",
         totalDays: attendance.filter((a) => a.status === "Present").length,
-        halfDays: attendance.filter(
-  (a) => a.status === "Half Day"
-).length,
+        halfDays: attendance.filter((a) => a.status === "Half Day").length,
         totalHours: totalHours.toFixed(1),
         attendance: attendance.map((a) => ({
           date: a.date,
@@ -244,7 +257,7 @@ const deleteHoliday = async (req, res) => {
   }
 };
 
-// ── GRANT EXTRA LEAVE (via admin controller) ──
+// ── GRANT EXTRA LEAVE ──
 const grantExtraLeave = async (req, res) => {
   try {
     const { employeeId, extraLeaves, reason, fromDate, toDate } = req.body;
@@ -255,7 +268,6 @@ const grantExtraLeave = async (req, res) => {
     user.extraLeaves = (user.extraLeaves || 0) + Number(extraLeaves);
     await user.save();
 
-    const Leave = require("../models/Leave");
     const leave = await Leave.create({
       employee: employeeId,
       leaveType: "Admin Granted",

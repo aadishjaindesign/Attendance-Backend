@@ -38,34 +38,42 @@ app.use(cors({
 cron.schedule(
   "0 22 * * *",
   async () => {
+    try {
+      console.log("🔥 Auto Checkout Cron Running");
 
-    const todayStr = getISTDateString();
+      const todayStr = getISTDateString();
 
-    const records = await Attendance.find({
-      date: todayStr,
-      checkOut: null,
-      status: "Present",
-    });
+      const records = await Attendance.find({
+        date: todayStr,
+        checkOut: null,
+        status: "Present",
+      });
 
-    for (const record of records) {
+      console.log("Records Found:", records.length);
 
-      const autoCheckout = new Date();
-      autoCheckout.setHours(22, 0, 0, 0);
+      for (const record of records) {
+        const autoCheckout = new Date();
 
-      record.checkOut = autoCheckout;
+        record.checkOut = autoCheckout;
 
-      const hours =
-        (record.checkOut - record.checkIn) /
-        (1000 * 60 * 60);
+        const hours =
+          (record.checkOut - record.checkIn) /
+          (1000 * 60 * 60);
 
-      record.status =
-        hours < 4 ? "Half Day" : "Present";
+        record.status =
+          hours < 4 ? "Half Day" : "Present";
 
-      await record.save();
+        await record.save();
+
+        console.log(
+          `✅ Auto Checkout Done -> ${record.employee}`
+        );
+      }
+
+      console.log("✅ Auto Checkout Completed");
+    } catch (err) {
+      console.error("❌ Auto Checkout Error:", err);
     }
-
-    console.log("✅ Auto Checkout Completed");
-
   },
   {
     timezone: "Asia/Kolkata",

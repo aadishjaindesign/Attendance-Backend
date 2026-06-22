@@ -297,6 +297,19 @@ const getEmployeeById = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+const getTodayAttendance = async (req, res) => {
+  try {
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const records = await Attendance.find({
+      date: todayStr,
+    }).populate("employee", "name department");
+
+    res.json(records);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 module.exports = {
   getDashboardStats,
@@ -313,4 +326,5 @@ module.exports = {
   deleteHoliday,
   grantExtraLeave,
   getEmployeeById,
+  getTodayAttendance,
 };

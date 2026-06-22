@@ -12,11 +12,13 @@ const {
   getAllAttendance,
   getEmployeeDetailReport,
   grantExtraLeave,
+  getTodayAttendance,
 
   // Holiday Controllers
   getHolidays,
   addHoliday,
   deleteHoliday,
+  
 } = require("../controllers/adminController");
 
 // Dashboard
@@ -28,12 +30,14 @@ router.get("/employees/removed", getRemovedEmployees);
 
 // Attendance
 router.get("/attendance", getAllAttendance);
+router.get("/today-attendance", getTodayAttendance);
 
 // Reports
 router.get("/employee-report", getEmployeeDetailReport);
 
 // Approvals
 router.get("/pending", getPendingEmployees);
+
 router.put("/approve/:id", approveEmployee);
 router.delete("/reject/:id", rejectEmployee);
 

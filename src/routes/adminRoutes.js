@@ -12,6 +12,11 @@ const {
   getAllAttendance,
   getEmployeeDetailReport,
   grantExtraLeave,
+
+  // Holiday Controllers
+  getHolidays,
+  addHoliday,
+  deleteHoliday,
 } = require("../controllers/adminController");
 
 // Dashboard
@@ -37,5 +42,12 @@ router.put("/remove/:id", removeEmployee);
 
 // Grant extra leave
 router.post("/grant-leave", grantExtraLeave);
+
+// =====================
+// Holiday Routes
+// =====================
+router.get("/holidays", getHolidays);
+router.post("/holidays", addHoliday);
+router.delete("/holidays/:id", deleteHoliday);
 
 module.exports = router;

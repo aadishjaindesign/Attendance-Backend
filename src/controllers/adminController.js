@@ -10,20 +10,45 @@ const getISTDateString = () => {
   return istDate.toISOString().slice(0, 10);
 };
 
+// Jo bhi status ho — ye sab "accounted for" hain, absent NAHI hain
+const PRESENT_STATUSES = ["Present", "Half Day", "Holiday", "Sunday", "Leave"];
+
 // ── DASHBOARD STATS ──
 const getDashboardStats = async (req, res) => {
   try {
-    const totalEmployees = await User.countDocuments({ role: "employee", status: "approved" });
-    const pendingApprovals = await User.countDocuments({ role: "employee", status: "pending" });
+    const totalEmployees = await User.countDocuments({
+      role: "employee",
+      status: "approved",
+    });
+
+    const pendingApprovals = await User.countDocuments({
+      role: "employee",
+      status: "pending",
+    });
 
     const todayStr = getISTDateString();
-    const presentToday = await Attendance.countDocuments({ date: todayStr, status: "Present" });
+
+    // Present = koi bhi attendance record jo aaj ka ho (Present/Half Day/Holiday/Sunday/Leave)
+    const presentToday = await Attendance.countDocuments({
+      date: todayStr,
+      status: { $in: PRESENT_STATUSES },
+    });
+
+    // Absent = approved employees - jo aaj kisi bhi status mein hain
     const absentToday = Math.max(0, totalEmployees - presentToday);
 
     const recentUsers = await User.find({ role: "employee" })
-      .select("-password").sort({ createdAt: -1 }).limit(5);
+      .select("-password")
+      .sort({ createdAt: -1 })
+      .limit(5);
 
-    res.json({ totalEmployees, pendingApprovals, presentToday, absentToday, recentUsers });
+    res.json({
+      totalEmployees,
+      pendingApprovals,
+      presentToday,
+      absentToday,
+      recentUsers,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -64,7 +89,11 @@ const getRemovedEmployees = async (req, res) => {
 // ── APPROVE EMPLOYEE ──
 const approveEmployee = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, { status: "approved" }, { new: true }).select("-password");
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { status: "approved" },
+      { new: true }
+    ).select("-password");
     if (!user) return res.status(404).json({ message: "Employee not found" });
     res.json({ message: "Employee approved successfully", user });
   } catch (error) {
@@ -86,7 +115,11 @@ const rejectEmployee = async (req, res) => {
 // ── REMOVE APPROVED EMPLOYEE ──
 const removeEmployee = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(req.params.id, { status: "removed" }, { new: true }).select("-password");
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { status: "removed" },
+      { new: true }
+    ).select("-password");
     if (!user) return res.status(404).json({ message: "Employee not found" });
     res.json({ message: "Employee removed. They cannot login anymore.", user });
   } catch (error) {
@@ -112,7 +145,8 @@ const getAllAttendance = async (req, res) => {
 const getTodayAttendance = async (req, res) => {
   try {
     const todayStr = getISTDateString();
-    const records = await Attendance.find({ date: todayStr }).populate("employee", "name department");
+    const records = await Attendance.find({ date: todayStr })
+      .populate("employee", "name department");
     res.json(records);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -158,7 +192,10 @@ const getEmployeeDetailReport = async (req, res) => {
 
       const leaves = await Leave.find({
         employee: emp._id,
-        createdAt: { $gte: new Date(startStr), $lte: new Date(endStr + "T23:59:59.999Z") },
+        createdAt: {
+          $gte: new Date(startStr),
+          $lte: new Date(endStr + "T23:59:59.999Z"),
+        },
       }).sort({ createdAt: -1 });
 
       let totalHours = 0;
@@ -175,14 +212,23 @@ const getEmployeeDetailReport = async (req, res) => {
         halfDays: attendance.filter((a) => a.status === "Half Day").length,
         totalHours: totalHours.toFixed(1),
         attendance: attendance.map((a) => ({
-          date: a.date, checkIn: a.checkIn, checkOut: a.checkOut, status: a.status,
-          hours: a.checkIn && a.checkOut
-            ? ((new Date(a.checkOut) - new Date(a.checkIn)) / (1000 * 60 * 60)).toFixed(1) : 0,
+          date: a.date,
+          checkIn: a.checkIn,
+          checkOut: a.checkOut,
+          status: a.status,
+          hours:
+            a.checkIn && a.checkOut
+              ? ((new Date(a.checkOut) - new Date(a.checkIn)) / (1000 * 60 * 60)).toFixed(1)
+              : 0,
         })),
         leaves: leaves.map((l) => ({
-          leaveType: l.leaveType, fromDate: l.fromDate, toDate: l.toDate,
-          reason: l.reason, status: l.status,
-          rejectionReason: l.rejectionReason, isAdminGranted: l.isAdminGranted,
+          leaveType: l.leaveType,
+          fromDate: l.fromDate,
+          toDate: l.toDate,
+          reason: l.reason,
+          status: l.status,
+          rejectionReason: l.rejectionReason,
+          isAdminGranted: l.isAdminGranted,
         })),
         leavesCount: leaves.length,
       });
@@ -247,7 +293,11 @@ const grantExtraLeave = async (req, res) => {
       isAdminGranted: true,
     });
 
-    res.json({ message: `${extraLeaves} extra leave(s) granted successfully`, user, leave });
+    res.json({
+      message: `${extraLeaves} extra leave(s) granted successfully`,
+      user,
+      leave,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -266,7 +316,6 @@ const getEmployeeById = async (req, res) => {
 };
 
 // ── FIX OLD CHECKOUTS (one-time use) ──
-// Sab purane records jinka checkOut null hai — unhe IST 6 PM pe fix karo
 const fixOldCheckouts = async (req, res) => {
   try {
     const records = await Attendance.find({ checkOut: null, status: "Present" });
@@ -276,15 +325,13 @@ const fixOldCheckouts = async (req, res) => {
 
     for (const record of records) {
       const checkInDate = new Date(record.checkIn);
-
-      // Us din ka IST 6 PM = UTC 12:30
       const autoCheckout = new Date(checkInDate);
       autoCheckout.setUTCHours(12, 30, 0, 0);
 
-      // Agar checkout time checkIn se pehle ho to 8 ghante baad lagao
-      const checkoutTime = autoCheckout > checkInDate
-        ? autoCheckout
-        : new Date(checkInDate.getTime() + 8 * 60 * 60 * 1000);
+      const checkoutTime =
+        autoCheckout > checkInDate
+          ? autoCheckout
+          : new Date(checkInDate.getTime() + 8 * 60 * 60 * 1000);
 
       record.checkOut = checkoutTime;
       const hours = (record.checkOut - record.checkIn) / (1000 * 60 * 60);
@@ -292,7 +339,11 @@ const fixOldCheckouts = async (req, res) => {
       await record.save();
       fixed++;
 
-      details.push({ date: record.date, hours: hours.toFixed(1), status: record.status });
+      details.push({
+        date: record.date,
+        hours: hours.toFixed(1),
+        status: record.status,
+      });
     }
 
     res.json({ message: `✅ ${fixed} old records fixed`, fixed, details });
@@ -317,5 +368,5 @@ module.exports = {
   deleteHoliday,
   grantExtraLeave,
   getEmployeeById,
-  fixOldCheckouts,   // ← naya
+  fixOldCheckouts,
 };

@@ -10,7 +10,7 @@ const attendanceRoutes = require("./routes/attendanceRoutes");
 const leaveRoutes      = require("./routes/leaveRoutes");
 const settingsRoutes   = require("./routes/settingsRoutes");
 
-const { autoMarkSundays, getISTDateString } = require("./controllers/attendanceController");
+const { autoMarkAttendance, getISTDateString } = require("./controllers/attendanceController");
 const Attendance = require("./models/Attendance");
 
 dotenv.config();
@@ -26,22 +26,16 @@ app.use(cors({
 app.use(express.json());
 
 // ══════════════════════════════════════════════════════
-// IST time check helper
-// Render UTC pe hai — IST = UTC + 5:30
-// ══════════════════════════════════════════════════════
-const getISTHour   = () => new Date(Date.now() + 5.5*60*60*1000).getUTCHours();
-const getISTMinute = () => new Date(Date.now() + 5.5*60*60*1000).getUTCMinutes();
-
-// ══════════════════════════════════════════════════════
 // AUTO CHECKOUT — raat 10:00 PM IST
-// Cron: UTC 16:30 = IST 22:00
-// "30 16 * * *" = UTC 16:30 = IST 22:00
+// Render UTC pe hai — IST = UTC + 5:30
+// UTC 16:30 = IST 22:00
 // ══════════════════════════════════════════════════════
 const runAutoCheckout = async () => {
   try {
     console.log("🔥 Auto Checkout Running — IST 10:00 PM");
     const todayStr = getISTDateString();
 
+    // Sirf woh records jo aaj ke hain, Present hain, aur checkout nahi hua
     const records = await Attendance.find({
       date: todayStr,
       checkOut: null,
@@ -51,15 +45,18 @@ const runAutoCheckout = async () => {
     console.log(`Records without checkout: ${records.length}`);
 
     for (const record of records) {
-      // IST 22:00 = UTC 16:30
-      const checkoutTime = new Date(Date.now()); // current time = ~22:00 IST
-
+      // IST 22:00 = UTC 16:30 — fixed checkout time
+      const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000);
+      // Checkout time as proper UTC
+      const checkoutTime = new Date(Date.now());
       record.checkOut = checkoutTime;
-      const hours = (record.checkOut - record.checkIn) / (1000 * 60 * 60);
+
+      // Hours calculate karo checkIn se checkOut tak
+      const hours = (checkoutTime - new Date(record.checkIn)) / (1000 * 60 * 60);
+      // 4 ghante se kam = Half Day, nahi to Present rehne do
       record.status = hours < 4 ? "Half Day" : "Present";
       await record.save();
-
-      console.log(`✅ Auto checked out: ${record.employee}`);
+      console.log(`✅ Auto checked out: ${record.employee} | Hours: ${hours.toFixed(2)} | Status: ${record.status}`);
     }
 
     console.log("✅ Auto Checkout Done");
@@ -68,17 +65,18 @@ const runAutoCheckout = async () => {
   }
 };
 
-// UTC 16:30 = IST 22:00 (10 PM)
-cron.schedule("30 16 * * *", runAutoCheckout);
-
 // ══════════════════════════════════════════════════════
-// AUTO SUNDAY MARK — raat 12:01 AM IST (UTC 18:31 prev day)
+// AUTO SUNDAY/HOLIDAY MARK — raat 12:01 AM IST
 // UTC 18:31 = IST 00:01
+// IMPORTANT: Startup pe NAHI chalega — sirf cron se chalega
 // ══════════════════════════════════════════════════════
 cron.schedule("31 18 * * *", async () => {
-  console.log("📅 Sunday auto-mark check");
-  await autoMarkSundays();
-});
+  console.log("📅 Auto attendance mark — Sunday/Holiday check");
+  await autoMarkAttendance();
+}, { timezone: "UTC" });
+
+// UTC 16:30 = IST 22:00 (10 PM auto checkout)
+cron.schedule("30 16 * * *", runAutoCheckout, { timezone: "UTC" });
 
 // ══════════════════════════════════════════════════════
 // KEEP-ALIVE — har 9 minute Render ko jaag rakho
@@ -107,24 +105,26 @@ app.get("/ping", (req, res) => {
   res.json({ pong: true, time: new Date(), ist: new Date(Date.now() + 5.5*60*60*1000).toISOString() });
 });
 
-// Manual trigger endpoint (testing ke liye)
+// Manual trigger — sirf testing ke liye
 app.post("/api/admin/trigger-checkout", async (req, res) => {
   await runAutoCheckout();
   res.json({ message: "Auto checkout triggered manually" });
 });
 
+app.post("/api/admin/trigger-auto-attendance", async (req, res) => {
+  await autoMarkAttendance();
+  res.json({ message: "Auto attendance triggered manually" });
+});
+
 // ══════════════════════════════════════════════════════
-// START
+// START — Startup pe koi auto function NAHI chalega
 // ══════════════════════════════════════════════════════
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
-
-  // Startup pe Sunday check
-  try {
-    await autoMarkSundays();
-    console.log("✅ Sunday auto check executed on startup");
-  } catch (err) {
-    console.error(err);
-  }
+  console.log(`⏰ Auto Checkout: IST 10:00 PM daily`);
+  console.log(`📅 Auto Attendance: IST 12:01 AM daily`);
+  console.log(`🏓 Keep-alive: every 9 minutes`);
+  // STARTUP PE KUCH AUTO NAHI CHALEGA
+  // Kyunki agar server restart ho to galat time pe chal ke sab ko mark kar deta hai
 });

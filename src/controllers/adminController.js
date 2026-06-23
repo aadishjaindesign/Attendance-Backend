@@ -16,19 +16,12 @@ const getDashboardStats = async (req, res) => {
     const totalEmployees = await User.countDocuments({ role: "employee", status: "approved" });
     const pendingApprovals = await User.countDocuments({ role: "employee", status: "pending" });
 
-    // FIX: IST date use karo — Render UTC pe hai
     const todayStr = getISTDateString();
-    const presentToday = await Attendance.countDocuments({
-      date: todayStr,
-      status: "Present",
-    });
-
+    const presentToday = await Attendance.countDocuments({ date: todayStr, status: "Present" });
     const absentToday = Math.max(0, totalEmployees - presentToday);
 
     const recentUsers = await User.find({ role: "employee" })
-      .select("-password")
-      .sort({ createdAt: -1 })
-      .limit(5);
+      .select("-password").sort({ createdAt: -1 }).limit(5);
 
     res.json({ totalEmployees, pendingApprovals, presentToday, absentToday, recentUsers });
   } catch (error) {
@@ -50,8 +43,7 @@ const getPendingEmployees = async (req, res) => {
 const getAllEmployees = async (req, res) => {
   try {
     const employees = await User.find({ role: "employee", status: "approved" })
-      .select("-password")
-      .sort({ createdAt: -1 });
+      .select("-password").sort({ createdAt: -1 });
     res.json(employees);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -62,8 +54,7 @@ const getAllEmployees = async (req, res) => {
 const getRemovedEmployees = async (req, res) => {
   try {
     const employees = await User.find({ role: "employee", status: "removed" })
-      .select("-password")
-      .sort({ updatedAt: -1 });
+      .select("-password").sort({ updatedAt: -1 });
     res.json(employees);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -73,12 +64,7 @@ const getRemovedEmployees = async (req, res) => {
 // ── APPROVE EMPLOYEE ──
 const approveEmployee = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { status: "approved" },
-      { new: true }
-    ).select("-password");
-
+    const user = await User.findByIdAndUpdate(req.params.id, { status: "approved" }, { new: true }).select("-password");
     if (!user) return res.status(404).json({ message: "Employee not found" });
     res.json({ message: "Employee approved successfully", user });
   } catch (error) {
@@ -97,15 +83,10 @@ const rejectEmployee = async (req, res) => {
   }
 };
 
-// ── REMOVE APPROVED EMPLOYEE (status = removed, data rakhte hain) ──
+// ── REMOVE APPROVED EMPLOYEE ──
 const removeEmployee = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { status: "removed" },
-      { new: true }
-    ).select("-password");
-
+    const user = await User.findByIdAndUpdate(req.params.id, { status: "removed" }, { new: true }).select("-password");
     if (!user) return res.status(404).json({ message: "Employee not found" });
     res.json({ message: "Employee removed. They cannot login anymore.", user });
   } catch (error) {
@@ -113,17 +94,25 @@ const removeEmployee = async (req, res) => {
   }
 };
 
-// ── ALL ATTENDANCE (employees only — admin rows nahi) ──
+// ── ALL ATTENDANCE (employees only) ──
 const getAllAttendance = async (req, res) => {
   try {
-    // FIX: Sirf employee role wale records lo, admin exclude
     const employeeIds = await User.find({ role: "employee" }).select("_id");
     const ids = employeeIds.map((u) => u._id);
-
     const records = await Attendance.find({ employee: { $in: ids } })
       .populate("employee", "name email department role")
       .sort({ date: -1 });
+    res.json(records);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
+// ── TODAY ATTENDANCE ──
+const getTodayAttendance = async (req, res) => {
+  try {
+    const todayStr = getISTDateString();
+    const records = await Attendance.find({ date: todayStr }).populate("employee", "name department");
     res.json(records);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -139,8 +128,7 @@ const getEmployeeDetailReport = async (req, res) => {
     const now = new Date();
 
     if (filter === "weekly") {
-      const s = new Date(now);
-      s.setDate(now.getDate() - 7);
+      const s = new Date(now); s.setDate(now.getDate() - 7);
       startStr = s.toISOString().slice(0, 10);
       endStr = now.toISOString().slice(0, 10);
     } else if (filter === "monthly") {
@@ -149,10 +137,8 @@ const getEmployeeDetailReport = async (req, res) => {
       startStr = s.toISOString().slice(0, 10);
       endStr = e.toISOString().slice(0, 10);
     } else if (filter === "custom" && startDate && endDate) {
-      startStr = startDate;
-      endStr = endDate;
+      startStr = startDate; endStr = endDate;
     } else {
-      // Default: is mahine
       const s = new Date(now.getFullYear(), now.getMonth(), 1);
       startStr = s.toISOString().slice(0, 10);
       endStr = now.toISOString().slice(0, 10);
@@ -165,7 +151,6 @@ const getEmployeeDetailReport = async (req, res) => {
     const reports = [];
 
     for (const emp of employees) {
-      // FIX: date string se filter karo (date field "YYYY-MM-DD" hai)
       const attendance = await Attendance.find({
         employee: emp._id,
         date: { $gte: startStr, $lte: endStr },
@@ -173,17 +158,13 @@ const getEmployeeDetailReport = async (req, res) => {
 
       const leaves = await Leave.find({
         employee: emp._id,
-        createdAt: {
-          $gte: new Date(startStr),
-          $lte: new Date(endStr + "T23:59:59.999Z"),
-        },
+        createdAt: { $gte: new Date(startStr), $lte: new Date(endStr + "T23:59:59.999Z") },
       }).sort({ createdAt: -1 });
 
       let totalHours = 0;
       attendance.forEach((a) => {
-        if (a.checkIn && a.checkOut) {
+        if (a.checkIn && a.checkOut)
           totalHours += (new Date(a.checkOut) - new Date(a.checkIn)) / (1000 * 60 * 60);
-        }
       });
 
       reports.push({
@@ -194,23 +175,14 @@ const getEmployeeDetailReport = async (req, res) => {
         halfDays: attendance.filter((a) => a.status === "Half Day").length,
         totalHours: totalHours.toFixed(1),
         attendance: attendance.map((a) => ({
-          date: a.date,
-          checkIn: a.checkIn,
-          checkOut: a.checkOut,
-          status: a.status,
-          hours:
-            a.checkIn && a.checkOut
-              ? ((new Date(a.checkOut) - new Date(a.checkIn)) / (1000 * 60 * 60)).toFixed(1)
-              : 0,
+          date: a.date, checkIn: a.checkIn, checkOut: a.checkOut, status: a.status,
+          hours: a.checkIn && a.checkOut
+            ? ((new Date(a.checkOut) - new Date(a.checkIn)) / (1000 * 60 * 60)).toFixed(1) : 0,
         })),
         leaves: leaves.map((l) => ({
-          leaveType: l.leaveType,
-          fromDate: l.fromDate,
-          toDate: l.toDate,
-          reason: l.reason,
-          status: l.status,
-          rejectionReason: l.rejectionReason,
-          isAdminGranted: l.isAdminGranted,
+          leaveType: l.leaveType, fromDate: l.fromDate, toDate: l.toDate,
+          reason: l.reason, status: l.status,
+          rejectionReason: l.rejectionReason, isAdminGranted: l.isAdminGranted,
         })),
         leavesCount: leaves.length,
       });
@@ -237,10 +209,7 @@ const addHoliday = async (req, res) => {
   try {
     const { title, fromDate, toDate, description } = req.body;
     const holiday = await Holiday.create({ title, fromDate, toDate, description });
-
-    // Auto mark attendance for all employees
     await autoMarkHoliday(holiday._id);
-
     res.status(201).json({ message: "Holiday added and attendance auto-marked", holiday });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -284,28 +253,49 @@ const grantExtraLeave = async (req, res) => {
   }
 };
 
-// ── GET EMPLOYEE DETAIL (for modal) ──
+// ── GET EMPLOYEE BY ID ──
 const getEmployeeById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select("-password");
     if (!user) return res.status(404).json({ message: "Employee not found" });
-
     const leaves = await Leave.find({ employee: user._id }).sort({ createdAt: -1 });
-
     res.json({ ...user.toObject(), leaves });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-const getTodayAttendance = async (req, res) => {
+
+// ── FIX OLD CHECKOUTS (one-time use) ──
+// Sab purane records jinka checkOut null hai — unhe IST 6 PM pe fix karo
+const fixOldCheckouts = async (req, res) => {
   try {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const records = await Attendance.find({ checkOut: null, status: "Present" });
 
-    const records = await Attendance.find({
-      date: todayStr,
-    }).populate("employee", "name department");
+    let fixed = 0;
+    const details = [];
 
-    res.json(records);
+    for (const record of records) {
+      const checkInDate = new Date(record.checkIn);
+
+      // Us din ka IST 6 PM = UTC 12:30
+      const autoCheckout = new Date(checkInDate);
+      autoCheckout.setUTCHours(12, 30, 0, 0);
+
+      // Agar checkout time checkIn se pehle ho to 8 ghante baad lagao
+      const checkoutTime = autoCheckout > checkInDate
+        ? autoCheckout
+        : new Date(checkInDate.getTime() + 8 * 60 * 60 * 1000);
+
+      record.checkOut = checkoutTime;
+      const hours = (record.checkOut - record.checkIn) / (1000 * 60 * 60);
+      record.status = hours < 4 ? "Half Day" : "Present";
+      await record.save();
+      fixed++;
+
+      details.push({ date: record.date, hours: hours.toFixed(1), status: record.status });
+    }
+
+    res.json({ message: `✅ ${fixed} old records fixed`, fixed, details });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -320,11 +310,12 @@ module.exports = {
   rejectEmployee,
   removeEmployee,
   getAllAttendance,
+  getTodayAttendance,
   getEmployeeDetailReport,
   getHolidays,
   addHoliday,
   deleteHoliday,
   grantExtraLeave,
   getEmployeeById,
-  getTodayAttendance,
+  fixOldCheckouts,   // ← naya
 };

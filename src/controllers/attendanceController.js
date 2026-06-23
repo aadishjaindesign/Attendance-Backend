@@ -1,7 +1,7 @@
 const Attendance = require("../models/Attendance");
-const Settings = require("../models/Settings");
-const Holiday = require("../models/Holiday");
-const User = require("../models/User");
+const Settings   = require("../models/Settings");
+const Holiday    = require("../models/Holiday");
+const User       = require("../models/User");
 
 // ── Distance Calculator ──
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -18,18 +18,15 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 // ── IST Date "YYYY-MM-DD" ──
-// FIX: Render server UTC pe hai, India IST (+5:30) hai
-// Isliye UTC me +5:30 add karke sahi date nikalte hain
+// Render server UTC pe hai, IST = UTC + 5:30
 const getISTDateString = () => {
-  const now = new Date();
-  const istDate = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
-  return istDate.toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const istDate = new Date(new Date().getTime() + 5.5 * 60 * 60 * 1000);
+  return istDate.toISOString().slice(0, 10);
 };
 
-// ── IST Day of Week (0=Sunday, 1=Monday ... 6=Saturday) ──
+// ── IST Day of Week (0=Sunday ... 6=Saturday) ──
 const getISTDayOfWeek = () => {
-  const now = new Date();
-  const istDate = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
+  const istDate = new Date(new Date().getTime() + 5.5 * 60 * 60 * 1000);
   return istDate.getUTCDay();
 };
 
@@ -40,50 +37,35 @@ const checkIn = async (req, res) => {
 
     const user = await User.findById(employeeId);
     if (!user) return res.status(404).json({ message: "User not found" });
-    if (user.role === "admin") {
-      return res.status(400).json({ message: "Admin attendance not tracked" });
-    }
-    if (user.status === "removed") {
-      return res.status(403).json({ message: "Account removed. Contact admin." });
-    }
+    if (user.role === "admin") return res.status(400).json({ message: "Admin attendance not tracked" });
+    if (user.status === "removed") return res.status(403).json({ message: "Account removed. Contact admin." });
 
-    const todayStr = getISTDateString();
+    const todayStr  = getISTDateString();
     const dayOfWeek = getISTDayOfWeek();
 
-    // Sunday check — IST ke hisab se
     if (dayOfWeek === 0) {
       return res.status(400).json({ message: "Aaj Sunday hai. Office band hai." });
     }
 
-    // Holiday check
     const todayDate = new Date(todayStr);
-    const holiday = await Holiday.findOne({
-      fromDate: { $lte: todayDate },
-      toDate: { $gte: todayDate },
-    });
+    const holiday   = await Holiday.findOne({ fromDate: { $lte: todayDate }, toDate: { $gte: todayDate } });
     if (holiday) {
-      return res.status(400).json({
-        message: `Aaj holiday hai: ${holiday.title}`,
-      });
+      return res.status(400).json({ message: `Aaj holiday hai: ${holiday.title}` });
     }
 
-    // Already checked in today?
     const existing = await Attendance.findOne({ employee: employeeId, date: todayStr });
     if (existing) {
       return res.status(400).json({ message: "Aaj ki attendance already mark ho chuki hai" });
     }
 
-    // Office radius check
     const settings = await Settings.findOne();
     if (!settings) {
       return res.status(400).json({ message: "Admin ne office location configure nahi ki hai" });
     }
 
     const distance = calculateDistance(
-      parseFloat(latitude),
-      parseFloat(longitude),
-      parseFloat(settings.latitude),
-      parseFloat(settings.longitude)
+      parseFloat(latitude), parseFloat(longitude),
+      parseFloat(settings.latitude), parseFloat(settings.longitude)
     );
 
     if (distance > settings.allowedRadius) {
@@ -118,18 +100,12 @@ const checkOut = async (req, res) => {
     });
 
     if (!attendance) {
-      return res.status(400).json({
-        message: "No active check-in found for today",
-      });
+      return res.status(400).json({ message: "No active check-in found for today" });
     }
 
     attendance.checkOut = new Date();
-
-    const hours =
-      (attendance.checkOut - attendance.checkIn) / (1000 * 60 * 60);
-
+    const hours = (attendance.checkOut - attendance.checkIn) / (1000 * 60 * 60);
     attendance.status = hours < 4 ? "Half Day" : "Present";
-
     await attendance.save();
 
     res.json({ message: "Check-out successful", attendance });
@@ -139,43 +115,22 @@ const checkOut = async (req, res) => {
 };
 
 // ── GET TODAY STATUS ──
-// FIX: Sunday/Holiday pe error nahi — seedha info response deta hai
-// Frontend ye dekh ke banner dikhata hai, koi popup nahi
 const getTodayAttendance = async (req, res) => {
   try {
-    const todayStr = getISTDateString();
+    const todayStr  = getISTDateString();
     const dayOfWeek = getISTDayOfWeek();
 
-    // Sunday — no error, just info object
     if (dayOfWeek === 0) {
-      return res.json({
-        isSunday: true,
-        date: todayStr,
-        status: "Sunday",
-        message: "Aaj Sunday hai. Office band hai.",
-      });
+      return res.json({ isSunday: true, date: todayStr, status: "Sunday", message: "Aaj Sunday hai. Office band hai." });
     }
 
-    // Holiday check
     const todayDate = new Date(todayStr);
-    const holiday = await Holiday.findOne({
-      fromDate: { $lte: todayDate },
-      toDate: { $gte: todayDate },
-    });
+    const holiday   = await Holiday.findOne({ fromDate: { $lte: todayDate }, toDate: { $gte: todayDate } });
     if (holiday) {
-      return res.json({
-        isHoliday: true,
-        date: todayStr,
-        status: "Holiday",
-        message: `Aaj holiday hai: ${holiday.title}`,
-      });
+      return res.json({ isHoliday: true, date: todayStr, status: "Holiday", message: `Aaj holiday hai: ${holiday.title}` });
     }
 
-    const data = await Attendance.findOne({
-      employee: req.params.id,
-      date: todayStr,
-    });
-
+    const data = await Attendance.findOne({ employee: req.params.id, date: todayStr });
     res.json(data || null);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -193,87 +148,82 @@ const getMyAttendance = async (req, res) => {
 };
 
 // ── AUTO MARK SUNDAYS ──
+// Sunday ke liye 10 AM check-in, 6 PM check-out auto save hoga
 const autoMarkSundays = async () => {
   try {
-
     const dayOfWeek = getISTDayOfWeek();
-
     if (dayOfWeek !== 0) return;
 
-    const employees = await User.find({
-      role: "employee",
-      status: "approved",
-    });
-
-    const todayStr = getISTDateString();
+    const employees = await User.find({ role: "employee", status: "approved" });
+    const todayStr  = getISTDateString();
 
     for (const emp of employees) {
-
-      const exists = await Attendance.findOne({
-        employee: emp._id,
-        date: todayStr,
-      });
-
+      const exists = await Attendance.findOne({ employee: emp._id, date: todayStr });
       if (!exists) {
-
+        // IST 10:00 AM = UTC 04:30
         const checkInTime = new Date();
-        checkInTime.setHours(10, 0, 0, 0);
+        checkInTime.setUTCHours(4, 30, 0, 0);
 
+        // IST 06:00 PM = UTC 12:30
         const checkOutTime = new Date();
-        checkOutTime.setHours(18, 0, 0, 0);
+        checkOutTime.setUTCHours(12, 30, 0, 0);
 
         await Attendance.create({
-          employee: emp._id,
-          date: todayStr,
-          checkIn: checkInTime,
-          checkOut: checkOutTime,
-          status: "Sunday",
-          note: "Auto Sunday",
+          employee:  emp._id,
+          date:      todayStr,
+          checkIn:   checkInTime,
+          checkOut:  checkOutTime,
+          status:    "Sunday",
+          note:      "Auto Sunday",
         });
-
       }
     }
-
+    console.log("✅ Sunday auto-marked");
   } catch (error) {
-    console.log(error);
+    console.error("Sunday mark error:", error.message);
   }
 };
+
 // ── AUTO MARK HOLIDAY ──
+// Holiday ke liye bhi 10 AM - 6 PM auto save hoga
 const autoMarkHoliday = async (holidayId) => {
   try {
-    const holiday = await Holiday.findById(holidayId);
+    const holiday   = await Holiday.findById(holidayId);
     if (!holiday) return;
-    
+
     const employees = await User.find({ role: "employee", status: "approved" });
-    const from = new Date(holiday.fromDate);
-    const to = new Date(holiday.toDate);
+    const from      = new Date(holiday.fromDate);
+    const to        = new Date(holiday.toDate);
 
     for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-      const checkInTime = new Date(d);
-checkInTime.setHours(10, 0, 0, 0);
-
-const checkOutTime = new Date(d);
-checkOutTime.setHours(18, 0, 0, 0);
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
+      const y       = d.getFullYear();
+      const m       = String(d.getMonth() + 1).padStart(2, "0");
+      const day     = String(d.getDate()).padStart(2, "0");
       const dateStr = `${y}-${m}-${day}`;
 
+      // IST 10:00 AM = UTC 04:30
+      const checkInTime = new Date(d);
+      checkInTime.setUTCHours(4, 30, 0, 0);
+
+      // IST 06:00 PM = UTC 12:30
+      const checkOutTime = new Date(d);
+      checkOutTime.setUTCHours(12, 30, 0, 0);
 
       for (const emp of employees) {
         const exists = await Attendance.findOne({ employee: emp._id, date: dateStr });
         if (!exists) {
-         await Attendance.create({
-  employee: emp._id,
-  date: dateStr,
-  checkIn: checkInTime,
-  checkOut: checkOutTime,
-  status: "Holiday",
-  note: holiday.title,
-});
+          await Attendance.create({
+            employee: emp._id,
+            date:     dateStr,
+            checkIn:  checkInTime,
+            checkOut: checkOutTime,
+            status:   "Holiday",
+            note:     holiday.title,
+          });
         }
       }
     }
+    console.log(`✅ Holiday auto-marked: ${holiday.title}`);
   } catch (error) {
     console.error("Auto Holiday Mark Error:", error.message);
   }
@@ -286,5 +236,5 @@ module.exports = {
   getMyAttendance,
   autoMarkSundays,
   autoMarkHoliday,
-    getISTDateString,
+  getISTDateString,
 };
